@@ -105,33 +105,35 @@ UPDATED=$(jq \
     --arg cancel "$HOOK_DIR/cancel-timer.sh" \
     '
     # 이미 동일한 command가 등록되어 있는지 확인하는 함수
+    # 주의: 빈 스트림이 아닌 항상 boolean을 반환해야 if/then이 올바르게 동작함
     def has_cmd($section; $matcher; $cmd):
-        (.hooks[$section] // [])[] |
+        [(.hooks[$section] // [])[] |
         select(.matcher == $matcher) |
-        .hooks[]? | select(.command == $cmd) | true;
+        .hooks[]? | select(.command == $cmd) | true] | length > 0;
 
     # Notification/idle_prompt — notify
-    if (try (has_cmd("Notification"; "idle_prompt"; $notify)) catch false) then .
+    if has_cmd("Notification"; "idle_prompt"; $notify) then .
     else .hooks.Notification = ((.hooks.Notification // []) + [{
         "matcher": "idle_prompt",
         "hooks": [{"type": "command", "command": $notify, "async": true}]
     }]) end |
 
     # PreToolUse/AskUserQuestion — ask
-    if (try (has_cmd("PreToolUse"; "AskUserQuestion"; $ask)) catch false) then .
+    if has_cmd("PreToolUse"; "AskUserQuestion"; $ask) then .
     else .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [{
         "matcher": "AskUserQuestion",
         "hooks": [{"type": "command", "command": $ask}]
     }]) end |
 
     # PostToolUse/AskUserQuestion — cancel
-    if (try (has_cmd("PostToolUse"; "AskUserQuestion"; $cancel)) catch false) then .
+    if has_cmd("PostToolUse"; "AskUserQuestion"; $cancel) then .
     else .hooks.PostToolUse = ((.hooks.PostToolUse // []) + [{
         "matcher": "AskUserQuestion",
         "hooks": [{"type": "command", "command": $cancel}]
     }]) end
-    ' "$SETTINGS_FILE")
+    ' "$SETTINGS_FILE") || error "jq 실패: settings.json을 파싱할 수 없습니다"
 
+[ -n "$UPDATED" ] || error "jq가 빈 결과를 반환했습니다 — settings.json을 보호하기 위해 중단합니다"
 echo "$UPDATED" > "$SETTINGS_FILE"
 info "settings.json 업데이트 완료: $SETTINGS_FILE"
 
